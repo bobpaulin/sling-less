@@ -1,4 +1,5 @@
 importPackage(java.io);
+importPackage(java.nio.charset);
 importPackage(Packages.org.apache.sling.webresource.util);
 importPackage(Packages.javax.jcr);
 importPackage(Packages.org.apache.commons.io);
@@ -21,8 +22,9 @@ function readFile(filename, characterCoding)
 {
 	if(!characterCoding)
 	{
-		characterCoding = null;
+		characterCoding = Charset.defaultCharset();
 	}
+	
 	var inputStream = JCRUtils.getFileNodeAsStream(currentNode.getNode(filename));
 	
 	return String(IOUtils.toString(inputStream, characterCoding));

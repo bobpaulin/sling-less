@@ -1,21 +1,17 @@
 package org.apache.sling.less;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.SequenceInputStream;
-import java.io.StringReader;
 import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.Map;
 
 import javax.jcr.Node;
-import javax.jcr.PathNotFoundException;
 import javax.jcr.Property;
 import javax.jcr.RepositoryException;
-import javax.jcr.ValueFormatException;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
@@ -24,19 +20,14 @@ import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.ScriptableObject;
-import org.osgi.service.component.ComponentContext;
-import org.mozilla.javascript.tools.shell.Global;
-import org.mozilla.javascript.JavaScriptException;
-import org.mozilla.javascript.ScriptRuntime;
-import org.mozilla.javascript.Scriptable;
 import org.apache.sling.webresource.WebResourceScriptCompiler;
+import org.apache.sling.webresource.WebResourceScriptRunner;
+import org.apache.sling.webresource.WebResourceScriptRunnerFactory;
 import org.apache.sling.webresource.exception.WebResourceCompileException;
 import org.apache.sling.webresource.model.GlobalCompileOptions;
 import org.apache.sling.webresource.util.JCRUtils;
 import org.apache.sling.webresource.util.ScriptUtils;
-import org.apache.commons.io.IOUtils;
+import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,8 +47,9 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
 
     @Reference
     private ResourceResolverFactory resourceResolverFactory;
-
-    private ScriptableObject rootScope = null;
+    
+    @Reference
+    private WebResourceScriptRunnerFactory webResourceScriptRunnerFactory;
 
     @org.apache.felix.scr.annotations.Property(label = "LESS Compiler Script Path", value = "/system/less/less-rhino-1.7.0.js")
     private final static String LESS_COMPILER_PATH = "less.compiler.path";
@@ -75,6 +67,8 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
     private String lesscCompilerPath;
 
     private String lessCachePath;
+    
+    private WebResourceScriptRunner scriptRunner;
 
     public void activate(final ComponentContext context) throws Exception {
         Dictionary config = context.getProperties();
@@ -86,8 +80,37 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
                 "/system/less/lessc-rhino-1.7.0.js");
         lessCachePath = PropertiesUtil.toString(config.get(LESS_CACHE_PATH),
                 "/var/less");
-        loadLessCompiler();
+        loadLessRunner();
+	    
     }
+
+	private void loadLessRunner() throws LoginException, RepositoryException {
+		ResourceResolver resolver = null;
+        try {
+            resolver = resourceResolverFactory
+                    .getAdministrativeResourceResolver(null);
+        
+	        InputStream lessCompilerStream = JCRUtils.getFileResourceAsStream(
+	                resolver, lessCompilerPath);
+	        
+	        InputStream lesscCompilerStream = JCRUtils.getFileResourceAsStream(
+	        		resolver, lesscCompilerPath);
+	        
+	        InputStream lessCombineStream = new SequenceInputStream(lessCompilerStream, lesscCompilerStream);
+	        
+	        InputStream lessOverridesStream = JCRUtils.getFileResourceAsStream(
+                    resolver, "/system/less/sling-less-overrides.js");
+	        
+	        InputStream globalScriptStream = new SequenceInputStream(lessCombineStream, lessOverridesStream);
+	        
+	        this.scriptRunner = this.webResourceScriptRunnerFactory.createRunner("less.js", globalScriptStream);
+        }finally{
+        	if(resolver != null)
+        	{
+        		resolver.close();
+        	}
+        }
+	}
 
     public InputStream compile(InputStream lessStream)
             throws WebResourceCompileException {
@@ -121,9 +144,10 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
                         .generateCompileOptionsString(lessCompileOptions));
             }
             scriptBuffer.append(");");
-            StringReader lessReader = new StringReader(scriptBuffer.toString());
-
-            Context rhinoContext = getContext();
+            
+            InputStream lessCompileScript = new ByteArrayInputStream(scriptBuffer.toString().getBytes());
+            
+            Map<String, Object> scriptVariables = new HashMap<String, Object>();
             
             if(sourcePath != null)
             {
@@ -132,22 +156,19 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
                         .getAdministrativeResourceResolver(null);
                 Resource sourceResource = resolver.getResource(sourcePath);
                 Resource sourceFolder = sourceResource.getParent();
-                rootScope.put("currentNode", rootScope, Context.toObject(
-                        sourceFolder.adaptTo(Node.class), rootScope));
-                rootScope.put("name", rootScope, Context.toObject(
-                        sourceFolder.getPath(), rootScope));
+                
+                scriptVariables.put("currentNode", sourceFolder.adaptTo(Node.class));
+                scriptVariables.put("name", sourceFolder.getPath());
+                  
             }
                     
-            
-            String compiledScript = (String) rhinoContext.evaluateReader(
-                    rootScope, lessReader, "LESS", 1, null);
+            String compiledScript = scriptRunner.evaluateScript(lessCompileScript, scriptVariables);
+            //String compiledScript = (String) rhinoContext.evaluateReader(
+            //        rootScope, lessReader, "LESS", 1, null);
             return new ByteArrayInputStream(compiledScript.getBytes());
         } catch (Exception e) {
             throw new WebResourceCompileException(e);
         } finally {
-            if (Context.getCurrentContext() != null) {
-                Context.exit();
-            }
             if (resolver != null) {
                 resolver.close();
             }
@@ -184,76 +205,13 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
         return "css";
     }
 
-    /**
-     * 
-     * Loads required LESS JS files and sets up the Global
-     * Rhino scope to allow for the use of command line functions
-     * such as print and importPackage.
-     * 
-     * @throws LoginException
-     * @throws PathNotFoundException
-     * @throws RepositoryException
-     * @throws ValueFormatException
-     * @throws IOException
-     */
-    protected void loadLessCompiler() throws LoginException,
-            PathNotFoundException, RepositoryException, ValueFormatException,
-            IOException {
-        Context rhinoContext = getContext();
-        ResourceResolver resolver = null;
-        try {
-            resolver = resourceResolverFactory
-                    .getAdministrativeResourceResolver(null);
-
-            rootScope = new Global(rhinoContext);
-            
-            rootScope.put("logger", rootScope, Context.toObject(log, rootScope));
-
-            InputStream lessCompilerStream = JCRUtils.getFileResourceAsStream(
-                    resolver, lessCompilerPath);
-            
-            InputStream lesscCompilerStream = JCRUtils.getFileResourceAsStream(
-            		resolver, lesscCompilerPath);
-            
-            InputStream lessCombineStream = new SequenceInputStream(lessCompilerStream, lesscCompilerStream);
-            
-            rhinoContext.evaluateReader(rootScope, new InputStreamReader(
-            		lessCombineStream), "less.js", 1, null);
-
-            InputStream lessOverridesStream = JCRUtils.getFileResourceAsStream(
-                    resolver, "/system/less/sling-less-overrides.js");
-            rhinoContext.evaluateReader(rootScope, new InputStreamReader(
-                    lessOverridesStream), "sling-less-overrides.js", 1, null);
-
-        } finally {
-            if (resolver != null) {
-                resolver.close();
-            }
-        }
-    }
-
-    /**
-     * 
-     * Retrieves Rhino Context and sets language and optimizations.
-     * 
-     * @return
-     */
-    public Context getContext() {
-        Context result = null;
-        if (Context.getCurrentContext() == null) {
-            Context.enter();
-        }
-        result = Context.getCurrentContext();
-        result.setOptimizationLevel(-1);
-        result.setLanguageVersion(Context.VERSION_1_7);
-
-        
-
-        return result;
-    }
-
     public void setResourceResolverFactory(
             ResourceResolverFactory resourceResolverFactory) {
         this.resourceResolverFactory = resourceResolverFactory;
     }
+    
+    public void setWebResourceScriptRunnerFactory(
+			WebResourceScriptRunnerFactory webResourceScriptRunnerFactory) {
+		this.webResourceScriptRunnerFactory = webResourceScriptRunnerFactory;
+	}
 }

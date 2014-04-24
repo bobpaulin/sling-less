@@ -14,6 +14,9 @@ import javax.jcr.Property;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.webresource.WebResourceScriptRunner;
+import org.apache.sling.webresource.WebResourceScriptRunnerFactory;
+import org.apache.sling.webresource.impl.WebResourceScriptRunnerFactoryImpl;
 import org.apache.sling.webresource.model.GlobalCompileOptions;
 import org.osgi.service.component.ComponentContext;
 import org.apache.commons.io.IOUtils;
@@ -29,6 +32,8 @@ import org.junit.Test;
 public class LessCompilerImplTest extends TestCase {
     
     private LessCompilerImpl lessCompiler;
+    
+    private WebResourceScriptRunnerFactory webResourceScriptRunnerFactory;
     
     private ResourceResolverFactory mockResourceResolverFactory;
     
@@ -51,9 +56,13 @@ public class LessCompilerImplTest extends TestCase {
         
         lessCompiler = new LessCompilerImpl();
         
+        webResourceScriptRunnerFactory = new WebResourceScriptRunnerFactoryImpl();
+        
         mockResourceResolverFactory = createMock(ResourceResolverFactory.class);
         
         lessCompiler.setResourceResolverFactory(mockResourceResolverFactory);
+        
+        lessCompiler.setWebResourceScriptRunnerFactory(webResourceScriptRunnerFactory);
         
         mockComponentContext = createMock(ComponentContext.class);
         mockResourceResolver = createMock(ResourceResolver.class);
