@@ -138,7 +138,7 @@ public class LessCompilerImpl implements WebResourceScriptCompiler {
             scriptBuffer.append(ScriptUtils.toJSMultiLineString(coffeeScript));
             scriptBuffer.append(", ");
             if (lessCompileOptions.isEmpty()) {
-                scriptBuffer.append("{strictMath:true}");
+                scriptBuffer.append("{}");
             } else {
                 scriptBuffer.append(ScriptUtils
                         .generateCompileOptionsString(lessCompileOptions));

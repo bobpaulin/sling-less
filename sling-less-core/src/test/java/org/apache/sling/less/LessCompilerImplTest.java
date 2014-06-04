@@ -14,8 +14,12 @@ import javax.jcr.Property;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
+import org.apache.sling.webresource.WebResourceInventoryManager;
+import org.apache.sling.webresource.WebResourceScriptCache;
 import org.apache.sling.webresource.WebResourceScriptRunner;
 import org.apache.sling.webresource.WebResourceScriptRunnerFactory;
+import org.apache.sling.webresource.impl.WebResourceInventoryManagerImpl;
+import org.apache.sling.webresource.impl.WebResourceScriptCacheImpl;
 import org.apache.sling.webresource.impl.WebResourceScriptRunnerFactoryImpl;
 import org.apache.sling.webresource.model.GlobalCompileOptions;
 import org.osgi.service.component.ComponentContext;
@@ -33,7 +37,7 @@ public class LessCompilerImplTest extends TestCase {
     
     private LessCompilerImpl lessCompiler;
     
-    private WebResourceScriptRunnerFactory webResourceScriptRunnerFactory;
+    private WebResourceScriptRunnerFactoryImpl webResourceScriptRunnerFactory;
     
     private ResourceResolverFactory mockResourceResolverFactory;
     
@@ -57,6 +61,14 @@ public class LessCompilerImplTest extends TestCase {
         lessCompiler = new LessCompilerImpl();
         
         webResourceScriptRunnerFactory = new WebResourceScriptRunnerFactoryImpl();
+        
+        WebResourceInventoryManager inventoryManagerMock = new WebResourceInventoryManagerImpl();
+        
+        WebResourceScriptCache scriptCacheMock = new WebResourceScriptCacheImpl();
+        
+        webResourceScriptRunnerFactory.setWebResourceInventoryManager(inventoryManagerMock);
+        
+        webResourceScriptRunnerFactory.setWebResourceScriptCache(scriptCacheMock);
         
         mockResourceResolverFactory = createMock(ResourceResolverFactory.class);
         

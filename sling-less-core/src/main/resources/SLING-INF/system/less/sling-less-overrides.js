@@ -13,25 +13,6 @@ importPackage(Packages.org.apache.commons.io);
  */
 
 /**
- * Overriding default Rhino readFile.
- * Reads a JCR File
- * 
- * @param filename
- */
-function readFile(filename, characterCoding)
-{
-	if(!characterCoding)
-	{
-		characterCoding = Charset.defaultCharset();
-	}
-	
-	var inputStream = JCRUtils.getFileNodeAsStream(currentNode.getNode(filename));
-	
-	return String(IOUtils.toString(inputStream, characterCoding));
-}
-
-
-/**
  * Output method to compile less to CSS.
  * @param css The CSS String
  * @param compileOptions LESS compile options
